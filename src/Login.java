@@ -30,17 +30,7 @@ public class Login {
             e.printStackTrace();
         }
     }
-    public static void insertAdmin(String username, String password) {
-        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
-            String sql = "INSERT INTO Admins (username, password) VALUES (?, ?)";
-            PreparedStatement stmt = conn.prepareStatement(sql);
-            stmt.setString(1, username);
-            stmt.setString(2, password);
-            stmt.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
+
 
     public static boolean isValidAdmin(String username, String password) {
         try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {

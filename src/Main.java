@@ -1,5 +1,7 @@
 import javax.swing.*;
 import java.awt.*;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.*;
 
 public class Main {
@@ -28,10 +30,56 @@ public class Main {
     }
     public static void createTable() {
         try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
-            String sql = "CREATE TABLE IF NOT EXISTS Admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, password TEXT NOT NULL)";
-            conn.createStatement().execute(sql);
+            // Check if table exists
+            DatabaseMetaData meta = conn.getMetaData();
+            ResultSet resultSet = meta.getTables(null, null, "Admins", null);
+            boolean tableExists = resultSet.next();
+
+            if (!tableExists) {
+                // Table doesn't exist, create it
+                String createTableSQL = "CREATE TABLE IF NOT EXISTS Admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, password TEXT NOT NULL)";
+                try (Statement stmt = conn.createStatement()) {
+                    stmt.execute(createTableSQL);
+
+                    // Insert initial admin if the table is newly created
+                    insertAdmin("admin", hashSHA256("ynuadmin"));
+                    System.out.println("Admin inserted successfully.");
+                }
+            }
         } catch (SQLException e) {
             e.printStackTrace();
+        }
+    }
+    public static void insertAdmin(String username, String password) {
+        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
+            String sql = "INSERT INTO Admins (username, password) VALUES (?, ?)";
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            stmt.setString(1, username);
+            stmt.setString(2, password);
+            stmt.executeUpdate();
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    public static String hashSHA256(String input) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(input.getBytes());
+
+            // Convert the byte array to a hexadecimal string
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) {
+                    hexString.append('0');
+                }
+                hexString.append(hex);
+            }
+
+            return hexString.toString();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+            return null;
         }
     }
     private static final String CREATE_CART_HISTORY_TABLE = "CREATE TABLE IF NOT EXISTS CartHistory (" +
