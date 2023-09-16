@@ -1,5 +1,7 @@
 import javax.swing.*;
 import java.awt.*;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.sql.*;
 
 public class Manager {
@@ -90,25 +92,26 @@ public class Manager {
 
     private void openChangePasswordDialog() {
         String username = getUsernameOfLoggedInAdmin();
-        JPasswordField currentPasswordField = new JPasswordField();
-        JPasswordField newPasswordField = new JPasswordField();
-        JPasswordField confirmPasswordField = new JPasswordField();
 
-        Object[] message = {
-                "当前密码:", currentPasswordField,
-                "新密码:", newPasswordField,
-                "确认新密码:", confirmPasswordField
-        };
+        while (true) {
+            JPasswordField currentPasswordField = new JPasswordField();
+            JPasswordField newPasswordField = new JPasswordField();
+            JPasswordField confirmPasswordField = new JPasswordField();
 
-        int option = JOptionPane.showConfirmDialog(
-                null,
-                message,
-                "修改密码",
-                JOptionPane.OK_CANCEL_OPTION
-        );
+            Object[] message = {
+                    "当前密码:", currentPasswordField,
+                    "新密码:", newPasswordField,
+                    "确认新密码:", confirmPasswordField
+            };
 
-        if (option == JOptionPane.OK_OPTION) {
-            while (true) {
+            int option = JOptionPane.showConfirmDialog(
+                    null,
+                    message,
+                    "修改密码",
+                    JOptionPane.OK_CANCEL_OPTION
+            );
+
+            if (option == JOptionPane.OK_OPTION) {
                 char[] currentPasswordChars = currentPasswordField.getPassword();
                 char[] newPasswordChars = newPasswordField.getPassword();
                 char[] confirmPasswordChars = confirmPasswordField.getPassword();
@@ -118,12 +121,11 @@ public class Manager {
                 String confirmPassword = new String(confirmPasswordChars);
 
                 // 首先，验证输入的当前密码是否正确
-                if (login.isValidAdmin(username, currentPassword)) {
+                if (login.isValidAdmin(username, hashSHA256(currentPassword))) {
                     // 然后，验证新密码和确认密码是否一致
                     if (newPassword.equals(confirmPassword)) {
                         if (isPasswordComplex(newPassword)) {
                             // 对新密码进行哈希处理并更新数据库中的密码
-
                             updateAdminPassword(username, newPassword);
                             JOptionPane.showMessageDialog(null, "密码修改成功。");
                             break; // 密码修改成功，跳出循环
@@ -163,9 +165,12 @@ public class Manager {
                         break; // 用户选择不重试，跳出循环
                     }
                 }
+            } else {
+                break; // 用户取消修改密码，跳出循环
             }
         }
     }
+
     private boolean isPasswordComplex(String password) {
         // 密码长度至少为8个字符
         if (password.length() < 8) {
@@ -215,13 +220,36 @@ public class Manager {
         try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
             String sql = "UPDATE Admins SET password = ? WHERE username = ?";
             PreparedStatement stmt = conn.prepareStatement(sql);
-            stmt.setString(1, newPassword);
+            stmt.setString(1, hashSHA256(newPassword));
             stmt.setString(2, username);
             stmt.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
+
+    public static String hashSHA256(String input) {
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            byte[] hash = md.digest(input.getBytes());
+
+            // Convert the byte array to a hexadecimal string
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hash) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) {
+                    hexString.append('0');
+                }
+                hexString.append(hex);
+            }
+
+            return hexString.toString();
+        } catch (NoSuchAlgorithmException e) {
+            e.printStackTrace();
+            return null;
+        }
+    }
+
     private void openResetUserPasswordDialog() {
         SwingUtilities.invokeLater(() -> {
             UsersRequest requestProcessingGUI = new UsersRequest();

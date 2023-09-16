@@ -14,6 +14,7 @@ public class Register {
         initializeComponents();
     }
     private void initializeComponents() {
+
         registerFrame = new JFrame("注册页面");
         registerFrame.setSize(400, 300);
         registerFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);

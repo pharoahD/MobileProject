@@ -1,7 +1,4 @@
-import javax.mail.Message;
-import javax.mail.PasswordAuthentication;
-import javax.mail.Session;
-import javax.mail.Transport;
+import javax.mail.*;
 import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeMessage;
 import javax.swing.*;
@@ -21,22 +18,7 @@ public class Login {
     private String loggedInUsername;
     private static final String DATABASE_URL = "jdbc:sqlite:D:\\mobile\\identifier.sqlite";
 
-    private void createUserTable() {
-        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
-            String sql = "CREATE TABLE IF NOT EXISTS Users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, password TEXT NOT NULL)";
-            conn.createStatement().execute(sql);
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
-    public  void createTable() {
-        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
-            String sql = "CREATE TABLE IF NOT EXISTS Admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, password TEXT NOT NULL)";
-            conn.createStatement().execute(sql);
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
+
     public static void insertUser(String username, String password) {
         try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
             String sql = "INSERT INTO Users (username, password) VALUES (?, ?)";
@@ -78,6 +60,7 @@ public class Login {
     }
 
     private void initializeComponents() {
+
         loginFrame = new JFrame("登录");
         loginFrame.setSize(300, 250);
         loginFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
@@ -163,7 +146,10 @@ public class Login {
             String sql = "SELECT * FROM Admins WHERE username = ? AND password = ?";
             PreparedStatement stmt = conn.prepareStatement(sql);
             stmt.setString(1, username);
-            stmt.setString(2, password);
+
+            // 对用户提供的密码进行哈希处理，并与数据库中的哈希密码比较
+            stmt.setString(2, hashSHA256(password));
+
             ResultSet resultSet = stmt.executeQuery();
             return resultSet.next();
         } catch (SQLException e) {
@@ -247,7 +233,7 @@ public class Login {
 
     private boolean isUsernameAndEmailMatch(String username, String email) {
         try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
-            String sql = "SELECT * FROM UserData WHERE username = ? AND email = ?";
+            String sql = "SELECT * FROM UsersData WHERE username = ? AND email = ?";
             PreparedStatement stmt = conn.prepareStatement(sql);
             stmt.setString(1, username);
             stmt.setString(2, email);
@@ -267,65 +253,86 @@ public class Login {
         boolean sentSuccessfully = sendVerificationCodeToEmail(email, verificationCode);
 
         if (sentSuccessfully) {
-            // 要求用户输入收到的验证码
-            String userInputCode = JOptionPane.showInputDialog(
-                    loginFrame,
-                    "请输入收到的验证码:",
-                    "验证码确认",
-                    JOptionPane.INFORMATION_MESSAGE
-            );
-
-            // 验证用户输入的验证码是否正确
-            if (verificationCode.equals(userInputCode)) {
-                // 允许用户输入新密码
-                JPasswordField newPasswordField = new JPasswordField();
-                JPasswordField confirmPasswordField = new JPasswordField();
-
-                Object[] newPasswordMessage = {
-                        "新密码:", newPasswordField,
-                        "确认新密码:", confirmPasswordField
+            boolean correctVerificationCode = false;
+            while (!correctVerificationCode) {
+                // 要求用户输入收到的验证码
+                JTextField userInputCode = new JTextField();
+                Object[] message = {
+                        "请输入收到的验证码:", userInputCode
                 };
 
-                int newPasswordOption = JOptionPane.showConfirmDialog(
+                int option = JOptionPane.showConfirmDialog(
                         loginFrame,
-                        newPasswordMessage,
-                        "设置新密码",
+                        message,
+                        "验证码确认",
                         JOptionPane.OK_CANCEL_OPTION
                 );
 
-                if (newPasswordOption == JOptionPane.OK_OPTION) {
-                    while (true) {
-                        char[] newPasswordChars = newPasswordField.getPassword();
-                        char[] confirmPasswordChars = confirmPasswordField.getPassword();
-                        String newPassword = new String(newPasswordChars);
-                        String confirmPassword = new String(confirmPasswordChars);
+                if (option == JOptionPane.OK_OPTION) {
+                    String userInputVerificationCode = userInputCode.getText();
 
-                        if (newPassword.equals(confirmPassword) && isPasswordComplex(newPassword)) {
-                            // 更新密码
-                            updatePassword(username, newPassword);
-                            JOptionPane.showMessageDialog(loginFrame, "密码已重置成功。");
-                            break; // 密码符合要求，跳出循环
-                        } else {
-                            int retryOption = JOptionPane.showConfirmDialog(
+                    // 验证用户输入的验证码是否正确
+                    if (verificationCode.equals(userInputVerificationCode)) {
+                        correctVerificationCode = true;
+                        boolean validPassword = false;
+                        while (!validPassword) {
+                            // 允许用户输入新密码
+                            JPasswordField newPasswordField = new JPasswordField();
+                            JPasswordField confirmPasswordField = new JPasswordField();
+
+                            Object[] newPasswordMessage = {
+                                    "新密码:", newPasswordField,
+                                    "确认新密码:", confirmPasswordField
+                            };
+
+                            int newPasswordOption = JOptionPane.showConfirmDialog(
                                     loginFrame,
-                                    "密码不符合要求或确认密码不匹配。\n是否要重新输入密码？",
-                                    "重试",
-                                    JOptionPane.YES_NO_OPTION
+                                    newPasswordMessage,
+                                    "设置新密码",
+                                    JOptionPane.OK_CANCEL_OPTION
                             );
 
-                            if (retryOption == JOptionPane.NO_OPTION) {
-                                break; // 用户选择不重试，跳出循环
+                            if (newPasswordOption == JOptionPane.OK_OPTION) {
+                                char[] newPasswordChars = newPasswordField.getPassword();
+                                char[] confirmPasswordChars = confirmPasswordField.getPassword();
+                                String newPassword = new String(newPasswordChars);
+                                String confirmPassword = new String(confirmPasswordChars);
+
+                                if (newPassword.equals(confirmPassword) && isPasswordComplex(newPassword)) {
+                                    // 更新密码
+                                    updatePassword(username, hashSHA256(newPassword));
+                                    JOptionPane.showMessageDialog(loginFrame, "密码已重置成功。");
+                                    validPassword = true;
+                                } else {
+                                    int retryOption = JOptionPane.showConfirmDialog(
+                                            loginFrame,
+                                            "密码不符合要求或确认密码不匹配。\n是否要重新输入密码？",
+                                            "重试",
+                                            JOptionPane.YES_NO_OPTION
+                                    );
+
+                                    if (retryOption == JOptionPane.NO_OPTION) {
+                                        break; // 用户选择不重试，跳出循环
+                                    }
+                                }
+                            } else {
+                                break; // 用户取消输入，跳出循环
                             }
                         }
+                    } else {
+                        JOptionPane.showMessageDialog(loginFrame, "验证码不正确，请重新尝试。");
                     }
+                } else {
+                    break; // 用户取消输入，跳出循环
                 }
-            } else {
-                JOptionPane.showMessageDialog(loginFrame, "验证码不正确，请重新尝试。");
             }
         } else {
             JOptionPane.showMessageDialog(loginFrame, "验证码发送失败，请稍后再试。");
         }
     }
+
+
+
 
     private String generateRandomVerificationCode() {
         // 实现生成随机验证码的逻辑，返回一个随机验证码字符串
@@ -362,12 +369,16 @@ public class Login {
             // 发送邮件
             Transport.send(message);
             return true; // 邮件发送成功
+        } catch (SendFailedException e) {
+            // 邮件发送失败，邮箱地址不存在
+            JOptionPane.showMessageDialog(null, "邮箱地址不存在。");
+            return false;
         } catch (Exception e) {
             e.printStackTrace();
             return false; // 邮件发送失败
         }
-
     }
+
 
     private boolean isSymbol(char c) {
         String symbols = "~`!@#$%^&*()-_=+[]{}|;:',.<>?/";

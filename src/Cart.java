@@ -14,6 +14,10 @@ public class Cart {
         cartFrame = new JFrame("购物车管理");
         cartFrame.setSize(600, 400);
         cartFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+        JPanel searchPanel = new JPanel();
+        JTextField searchField = new JTextField(20); // 设置搜索框的大小
+        JButton searchButton = new JButton("搜索");
+        JButton returnButton = new JButton("<<="); // 添加返回按钮
 
         JPanel panel = new JPanel();
         panel.setLayout(new BorderLayout());
@@ -83,9 +87,46 @@ public class Cart {
             // 实现下单逻辑
             performCheckout(username);
         });
+        searchButton.addActionListener(e -> {
+            String searchText = searchField.getText();
+            searchAndDisplayProducts(tableModel, username, searchText);
+        });
+        returnButton.addActionListener(e -> {
+            refreshCartTable(tableModel, username); // 重新刷新购物车内容
+        });
+        searchPanel.add(returnButton);
+        searchPanel.add(new JLabel("搜索商品: "));
+        searchPanel.add(searchField);
+        searchPanel.add(searchButton);
+
+        panel.add(searchPanel, BorderLayout.NORTH); // 将搜索面板添加到主面板的上方
 
         cartFrame.add(panel);
         cartFrame.setVisible(true);
+    }
+
+    private void searchAndDisplayProducts(DefaultTableModel tableModel, String username, String searchText) {
+        tableModel.setRowCount(0); // 清空表格数据
+
+        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
+            String sql = "SELECT product_id, product_name, quantity, price FROM Cart WHERE username = ? AND product_name LIKE ?";
+            PreparedStatement stmt = conn.prepareStatement(sql);
+            stmt.setString(1, username);
+            stmt.setString(2, "%" + searchText + "%"); // 使用模糊匹配搜索
+            ResultSet resultSet = stmt.executeQuery();
+
+            while (resultSet.next()) {
+                int productId = resultSet.getInt("product_id");
+                String productName = resultSet.getString("product_name");
+                int quantity = resultSet.getInt("quantity");
+                double price = resultSet.getDouble("price");
+
+                Object[] rowData = {productId, productName, quantity, price};
+                tableModel.addRow(rowData);
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     private void openPaymentPage(int orderId, Connection conn) {
@@ -141,17 +182,7 @@ public class Cart {
         return totalAmount;
     }
 
-    private void updateTotalSpent(String username, double totalAmount, Connection conn) {
-        try {
-            String updateTotalSpentSQL = "UPDATE UsersData SET total_spent = total_spent + ? WHERE username = ?";
-            PreparedStatement updateTotalSpentStmt = conn.prepareStatement(updateTotalSpentSQL);
-            updateTotalSpentStmt.setDouble(1, totalAmount);
-            updateTotalSpentStmt.setString(2, username);
-            updateTotalSpentStmt.executeUpdate();
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
+
     private void performCheckout(String username) {
         try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
             // 获取购物车中的商品信息
@@ -159,9 +190,16 @@ public class Cart {
             PreparedStatement cartStmt = conn.prepareStatement(cartQuery);
             cartStmt.setString(1, username);
             ResultSet cartResultSet = cartStmt.executeQuery();
+            // Check if the cart is empty
+            if (!cartResultSet.next()) {
+                JOptionPane.showMessageDialog(null, "购物车为空，无法下单。");
+                return;  // Exit the method if cart is empty
+            }
             boolean allProductsAvailable = true;
 
             // 验证购物车中的商品是否存在并库存是否足够
+            StringBuilder insufficientProducts = new StringBuilder();
+
             while (cartResultSet.next()) {
                 int productId = cartResultSet.getInt("product_id");
                 int quantity = cartResultSet.getInt("quantity");
@@ -171,55 +209,120 @@ public class Cart {
 
                 if (product == null || quantity > product.getQuantity()) {
                     allProductsAvailable = false;
-                    break;
+                    String productName = product != null ? product.getName() : "未知商品";
+                    insufficientProducts.append(productName).append("\n");
                 }
             }
 
             if (allProductsAvailable) {
-            // 创建订单记录并插入订单数据库
-            String orderInsertQuery = "INSERT INTO Orders (username, order_date) VALUES (?, ?)";
-            PreparedStatement orderInsertStmt = conn.prepareStatement(orderInsertQuery, Statement.RETURN_GENERATED_KEYS);
-            orderInsertStmt.setString(1, username);
-            orderInsertStmt.setString(2, getCurrentDate()); // 获取当前日期
-            int affectedRows = orderInsertStmt.executeUpdate();
-            ResultSet cartResultSet1 = cartStmt.executeQuery();
+                // 创建订单记录并插入订单数据库
+                String orderInsertQuery = "INSERT INTO Orders (username, order_date) VALUES (?, ?)";
+                PreparedStatement orderInsertStmt = conn.prepareStatement(orderInsertQuery, Statement.RETURN_GENERATED_KEYS);
+                orderInsertStmt.setString(1, username);
+                orderInsertStmt.setString(2, getCurrentDate()); // 获取当前日期
+                int affectedRows = orderInsertStmt.executeUpdate();
+                ResultSet cartResultSet1 = cartStmt.executeQuery();
 
-            if (affectedRows > 0) {
-                ResultSet generatedKeys = orderInsertStmt.getGeneratedKeys();
-                if (generatedKeys.next()) {
-                    int orderId = generatedKeys.getInt(1);
-                    double totalAmount = calculateTotalAmount(orderId, conn);
-                    updateTotalSpent(username, totalAmount, conn);
-                    // 将购物车中的商品信息插入购物车历史数据库
-                    while (cartResultSet1.next()) {
-                        int productId = cartResultSet.getInt("product_id");
-                        String productName = cartResultSet.getString("product_name");
-                        int quantity = cartResultSet.getInt("quantity");
-                        double price = cartResultSet.getDouble("price");
+                if (affectedRows > 0) {
+                    ResultSet generatedKeys = orderInsertStmt.getGeneratedKeys();
+                    if (generatedKeys.next()) {
+                        int orderId = generatedKeys.getInt(1);
 
-                        insertCartItemHistory(orderId, username, getCurrentDate(), productId, productName, quantity, price, conn);
-                        // 更新Goods数据库中的商品数量
-                        updateProductQuantity(productId, quantity, conn);
+                        // 将购物车中的商品信息插入购物车历史数据库
+                        while (cartResultSet1.next()) {
+                            int productId = cartResultSet.getInt("product_id");
+                            String productName = cartResultSet.getString("product_name");
+                            int quantity = cartResultSet.getInt("quantity");
+                            double price = cartResultSet.getDouble("price");
+
+                            insertCartItemHistory(orderId, username, getCurrentDate(), productId, productName, quantity, price, conn);
+
+                            updatePurchaseCount(conn,productName,quantity);
+                            // 更新Goods数据库中的商品数量
+                            updateProductQuantity(productId, quantity, conn);
+                        }
+                        double totalAmount = calculateTotalAmount(orderId, conn);
+                        updateTotalSpent(username, totalAmount, conn);
+                        // 清空购物车
+                        String clearCartQuery = "DELETE FROM Cart WHERE username = ?";
+                        PreparedStatement clearCartStmt = conn.prepareStatement(clearCartQuery);
+                        clearCartStmt.setString(1, username);
+                        clearCartStmt.executeUpdate();
+
+                        JOptionPane.showMessageDialog(null, "订单已生成，购物车已清空。");
+                        // 关闭购物车管理界面
+                        cartFrame.dispose();
+
+                        // 打开支付页面
+                        openPaymentPage(orderId, conn);
+
                     }
+                }} else {
+                        // 显示库存不足的商品信息
+                        String message = "以下商品库存不足或不存在，请修改购物车中的商品：\n" + insufficientProducts.toString();
+                        JOptionPane.showMessageDialog(null, message);
+                    }
+                } catch (SQLException e) {
+                    e.printStackTrace();
+                }
+    }
 
-                    // 清空购物车
-                    String clearCartQuery = "DELETE FROM Cart WHERE username = ?";
-                    PreparedStatement clearCartStmt = conn.prepareStatement(clearCartQuery);
-                    clearCartStmt.setString(1, username);
-                    clearCartStmt.executeUpdate();
+    private static int getPurchaseCount(String productName) {
+        int purchaseCount = 0;
 
-                    JOptionPane.showMessageDialog(null, "订单已生成，购物车已清空。");
-                    // 关闭购物车管理界面
-                    cartFrame.dispose();
+        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
+            if (conn != null) {
+                String selectSQL = "SELECT purchaseCount FROM HotGoods WHERE productName = ?";
+                try (PreparedStatement selectStmt = conn.prepareStatement(selectSQL)) {
+                    selectStmt.setString(1, productName);
+                    ResultSet resultSet = selectStmt.executeQuery();
 
-                    // 打开支付页面
-                    openPaymentPage(orderId, conn);
+                    if (resultSet.next()) {
+                        purchaseCount = resultSet.getInt("purchaseCount");
+                    }
                 }
             }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+        return purchaseCount;
+    }
+
+
+
+    private static void updatePurchaseCount(Connection conn, String productName, int purchaseQuantity)
+            throws SQLException {
+        // 更新商品的购买次数
+        String updateSQL = "UPDATE HotGoods SET purchaseCount = purchaseCount + ? WHERE productName = ?";
+        PreparedStatement updateStmt = conn.prepareStatement(updateSQL);
+        updateStmt.setInt(1, purchaseQuantity);
+        updateStmt.setString(2, productName);
+        updateStmt.executeUpdate();
+    }
+    private void updateTotalSpent(String username, double orderTotal, Connection conn) {
+        try {
+            // 查询当前用户的total_spent
+            String selectQuery = "SELECT total_spent FROM UsersData WHERE username = ?";
+            PreparedStatement selectStmt = conn.prepareStatement(selectQuery);
+            selectStmt.setString(1, username);
+            ResultSet resultSet = selectStmt.executeQuery();
+
+            double currentTotalSpent = 0.0;
+
+            if (resultSet.next()) {
+                currentTotalSpent = resultSet.getDouble("total_spent");
             }
-            else {
-                    JOptionPane.showMessageDialog(null, "部分商品不存在或库存不足，请修改购物车中的商品。");
-                }
+
+            // 更新total_spent，将新订单的总金额添加到当前total_spent上
+            double newTotalSpent = currentTotalSpent + orderTotal;
+
+            // 执行更新操作
+            String updateQuery = "UPDATE UsersData SET total_spent = ? WHERE username = ?";
+            PreparedStatement updateStmt = conn.prepareStatement(updateQuery);
+            updateStmt.setDouble(1, newTotalSpent);
+            updateStmt.setString(2, username);
+            updateStmt.executeUpdate();
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -538,41 +641,10 @@ public class Cart {
         }
     }
 
-    public static void createOrderTable() {
-        String ORDERS_TABLE_CREATE_SQL =
-                "CREATE TABLE IF NOT EXISTS Orders (" +
-                        "username TEXT NOT NULL," +
-                        "order_date TEXT NOT NULL)";
-
-// 在数据库初始化时执行该语句来创建 Orders 表
-        try (Connection conn = DriverManager.getConnection(DATABASE_URL);
-             Statement stmt = conn.createStatement()) {
-            stmt.executeUpdate(ORDERS_TABLE_CREATE_SQL);
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-
-    }
 
 
-    public static void createCartTable() {
-        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
-            String createTableSQL = "CREATE TABLE IF NOT EXISTS Cart (" +
-                    "cart_id INTEGER PRIMARY KEY AUTOINCREMENT, " +
-                    "username TEXT NOT NULL, " +
-                    "product_id INTEGER NOT NULL, " +
-                    "product_name TEXT NOT NULL, " +
-                    "quantity INTEGER NOT NULL, " +
-                    "price REAL NOT NULL)";
 
-            try (Statement stmt = conn.createStatement()) {
-                stmt.execute(createTableSQL);
-                System.out.println("Cart table created successfully.");
-            }
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
+
 }
 
 

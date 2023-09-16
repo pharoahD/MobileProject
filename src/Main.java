@@ -1,14 +1,171 @@
 import javax.swing.*;
 import java.awt.*;
+import java.sql.*;
 
 public class Main {
     private static JFrame mainFrame;
 
     public static void main(String[] args) {
+        createTable();
+        createUserTable();
+        createCartHistoryTable();
+        createCartTable();
+        createGoodsTable();
+        createOrderTable();
+        createTableIfNotExists();
+        CreateHotGoodsDatabase();
+        createRequestTable();
         SwingUtilities.invokeLater(Main::createAndShowGUI);
+    }
+    private static final String DATABASE_URL = "jdbc:sqlite:D:\\mobile\\identifier.sqlite";
+    public static void createUserTable() {
+        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
+            String sql = "CREATE TABLE IF NOT EXISTS Users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, password TEXT NOT NULL)";
+            conn.createStatement().execute(sql);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    public static void createTable() {
+        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
+            String sql = "CREATE TABLE IF NOT EXISTS Admins (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT NOT NULL, password TEXT NOT NULL)";
+            conn.createStatement().execute(sql);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    private static final String CREATE_CART_HISTORY_TABLE = "CREATE TABLE IF NOT EXISTS CartHistory (" +
+            "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+            "username TEXT," +
+            "order_id INTEGER," +
+            "order_date TEXT," + // 添加下单日期列
+            "product_id INTEGER," +
+            "product_name TEXT," +
+            "quantity INTEGER," +
+            "price REAL" +
+            ");";
+    public static void createCartHistoryTable() {
+        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
+            conn.createStatement().execute(CREATE_CART_HISTORY_TABLE);
+
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    public static void createCartTable() {
+        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
+            String createTableSQL = "CREATE TABLE IF NOT EXISTS Cart (" +
+                    "cart_id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    "username TEXT NOT NULL, " +
+                    "product_id INTEGER NOT NULL, " +
+                    "product_name TEXT NOT NULL, " +
+                    "quantity INTEGER NOT NULL, " +
+                    "price REAL NOT NULL)";
+
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute(createTableSQL);
+
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    public static void createGoodsTable() {
+        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
+            String sql = "CREATE TABLE IF NOT EXISTS Goods (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    "name TEXT NOT NULL, " +
+                    "manufacturer TEXT NOT NULL, " +
+                    "production_date TEXT NOT NULL, " +
+                    "model TEXT NOT NULL, " +
+                    "purchase_price REAL NOT NULL, " +
+                    "retail_price REAL NOT NULL, " +
+                    "quantity INTEGER NOT NULL)";
+            conn.createStatement().execute(sql);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    public static void createOrderTable() {
+        String ORDERS_TABLE_CREATE_SQL =
+                "CREATE TABLE IF NOT EXISTS Orders (" +
+                        "username TEXT NOT NULL," +
+                        "order_date TEXT NOT NULL)";
+
+        // 在数据库初始化时执行该语句来创建 Orders 表
+        try (Connection conn = DriverManager.getConnection(DATABASE_URL);
+             Statement stmt = conn.createStatement()) {
+            stmt.executeUpdate(ORDERS_TABLE_CREATE_SQL);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+
+    }
+    public static void createTableIfNotExists() {
+        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
+            String sql = "CREATE TABLE IF NOT EXISTS UsersData (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    "username TEXT NOT NULL, " +
+                    "user_level TEXT NOT NULL, " +
+                    "registration_date TEXT NOT NULL, " +
+                    "total_spent REAL NOT NULL, " +
+                    "phone_number TEXT NOT NULL, " +
+                    "email TEXT NOT NULL)";
+            conn.createStatement().execute(sql);
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+    public static void CreateHotGoodsDatabase() {
+        Connection conn = null;
+
+        try {
+            // 连接到数据库
+            conn = DriverManager.getConnection(DATABASE_URL);
+
+            if (conn != null) {
+
+
+                // 创建商品表
+                Statement statement = conn.createStatement();
+                String createTableSQL = "CREATE TABLE IF NOT EXISTS HotGoods (" +
+                        "id INTEGER PRIMARY KEY AUTOINCREMENT," +
+                        "productName TEXT NOT NULL," +
+                        "purchaseCount INTEGER DEFAULT 0" +
+                        ");";
+                statement.executeUpdate(createTableSQL);
+
+
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        } finally {
+            try {
+                if (conn != null) {
+                    conn.close();
+                }
+            } catch (SQLException e) {
+                e.printStackTrace();
+            }
+        }
+    }
+    public static void createRequestTable() {
+        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
+            String createTableSQL = "CREATE TABLE IF NOT EXISTS Request (" +
+                    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
+                    "username TEXT NOT NULL)";
+
+            try (Statement stmt = conn.createStatement()) {
+                stmt.execute(createTableSQL);
+
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
     }
 
     public static void createAndShowGUI() {
+
         mainFrame = new JFrame("购物商城页面");
         mainFrame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         mainFrame.setSize(300, 250); // 增加高度以容纳标题

@@ -12,7 +12,7 @@ public class UsersData {
 
     public UsersData() {
         initializeComponents();
-        createTableIfNotExists();
+
         updateTableData();
     }
 
@@ -32,21 +32,7 @@ public class UsersData {
         frame.add(panel);
     }
 
-    private void createTableIfNotExists() {
-        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
-            String sql = "CREATE TABLE IF NOT EXISTS UsersData (" +
-                    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
-                    "username TEXT NOT NULL, " +
-                    "user_level TEXT NOT NULL, " +
-                    "registration_date TEXT NOT NULL, " +
-                    "total_spent REAL NOT NULL, " +
-                    "phone_number TEXT NOT NULL, " +
-                    "email TEXT NOT NULL)";
-            conn.createStatement().execute(sql);
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
+
 
     private void updateTableData() {
         tableModel.setColumnIdentifiers(new String[]{
@@ -64,17 +50,19 @@ public class UsersData {
                 String userLevel = resultSet.getString("user_level");
                 String registrationDate = resultSet.getString("registration_date");
                 double totalSpent = resultSet.getDouble("total_spent");
+                String formattedTotalSpent = String.format("%.2f", totalSpent); // Format to 2 decimal places
                 String phoneNumber = resultSet.getString("phone_number");
                 String email = resultSet.getString("email");
 
                 tableModel.addRow(new Object[]{
-                        userId, username, userLevel, registrationDate, totalSpent, phoneNumber, email
+                        userId, username, userLevel, registrationDate, formattedTotalSpent, phoneNumber, email
                 });
             }
         } catch (SQLException e) {
             e.printStackTrace();
         }
     }
+
 
     public void showUserInfoPage() {
         frame.setVisible(true);
@@ -136,12 +124,19 @@ public class UsersData {
         JFrame userListFrame = new JFrame("所有用户信息");
         userListFrame.setSize(800, 600);
 
-        JTable userTable = new JTable(tableModel); // 使用之前定义的 tableModel
+        // Clear existing data in the table model
+        tableModel.setRowCount(0);
+
+        JTable userTable = new JTable(tableModel); // Use the previously defined tableModel
         JScrollPane scrollPane = new JScrollPane(userTable);
+
+        // Refresh the table data
+        updateTableData();
 
         userListFrame.add(scrollPane);
         userListFrame.setVisible(true);
     }
+
 
 
     private void openDeleteUserPage() {

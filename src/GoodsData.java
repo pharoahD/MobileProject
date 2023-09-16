@@ -10,24 +10,9 @@ public class GoodsData {
 
     public GoodsData() {
         initializeComponents();
-        createGoodsTable();
+
     }
-    private void createGoodsTable() {
-        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
-            String sql = "CREATE TABLE IF NOT EXISTS Goods (" +
-                    "id INTEGER PRIMARY KEY AUTOINCREMENT, " +
-                    "name TEXT NOT NULL, " +
-                    "manufacturer TEXT NOT NULL, " +
-                    "production_date TEXT NOT NULL, " +
-                    "model TEXT NOT NULL, " +
-                    "purchase_price REAL NOT NULL, " +
-                    "retail_price REAL NOT NULL, " +
-                    "quantity INTEGER NOT NULL)";
-            conn.createStatement().execute(sql);
-        } catch (SQLException e) {
-            e.printStackTrace();
-        }
-    }
+
 
     private void initializeComponents() {
         frame = new JFrame("商品信息管理");
@@ -207,6 +192,8 @@ public class GoodsData {
             int quantity = Integer.parseInt(quantityText);
 
             insertGoods(id,name, manufacturer, productionDate, model, purchasePrice, retailPrice, quantity);
+
+            insertPurchaseCount(name,0);
             addFrame.dispose();
         });
         panel.add(idLabel);
@@ -231,6 +218,47 @@ public class GoodsData {
         addFrame.add(panel);
         addFrame.setVisible(true);
     }
+
+    private static void insertPurchaseCount(String productName, int purchaseCount) {
+        try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
+            if (conn != null) {
+                System.out.println("成功连接到数据库");
+
+                // 检查产品是否已存在
+                String checkIfExistsSQL = "SELECT purchaseCount FROM HotGoods WHERE productName = ?";
+                try (PreparedStatement checkStmt = conn.prepareStatement(checkIfExistsSQL)) {
+                    checkStmt.setString(1, productName);
+                    ResultSet resultSet = checkStmt.executeQuery();
+
+                    if (resultSet.next()) {
+                        // 产品已存在，获取当前购买次数并叠加
+                        int currentCount = resultSet.getInt("purchaseCount");
+                        purchaseCount += currentCount;
+
+                        // 更新购买次数
+                        String updateSQL = "UPDATE HotGoods SET purchaseCount = ? WHERE productName = ?";
+                        try (PreparedStatement updateStmt = conn.prepareStatement(updateSQL)) {
+                            updateStmt.setInt(1, purchaseCount);
+                            updateStmt.setString(2, productName);
+                            updateStmt.executeUpdate();
+                        }
+                    } else {
+                        // 产品不存在，插入新行
+                        String insertSQL = "INSERT INTO HotGoods (productName, purchaseCount) VALUES (?, ?)";
+                        try (PreparedStatement insertStmt = conn.prepareStatement(insertSQL)) {
+                            insertStmt.setString(1, productName);
+                            insertStmt.setInt(2, purchaseCount);
+                            insertStmt.executeUpdate();
+                        }
+                    }
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+    }
+
+
 
     public GoodsInfo getGoodsInfoById(int goodsId) {
         try (Connection conn = DriverManager.getConnection(DATABASE_URL)) {
